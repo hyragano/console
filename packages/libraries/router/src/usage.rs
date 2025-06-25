@@ -38,7 +38,9 @@ struct OperationConfig {
     sample_rate: f64,
     exclude: Option<Vec<String>>,
     client_name_header: String,
+    client_name_header_default: Option<String>,
     client_version_header: String,
+    client_version_header_default: Option<String>,
 }
 
 pub struct UsagePlugin {
@@ -70,7 +72,9 @@ pub struct Config {
     /// A list of operations (by name) to be ignored by GraphQL Hive.
     exclude: Option<Vec<String>>,
     client_name_header: Option<String>,
+    client_name_header_default: Option<String>,
     client_version_header: Option<String>,
+    client_version_header_default: Option<String>,
     /// A maximum number of operations to hold in a buffer before sending to GraphQL Hive
     /// Default: 1000
     buffer_size: Option<usize>,
@@ -99,7 +103,9 @@ impl Default for Config {
             sample_rate: Some(1.0),
             exclude: None,
             client_name_header: Some(String::from("graphql-client-name")),
+            client_name_header_default: None,
             client_version_header: Some(String::from("graphql-client-version")),
+            client_version_header_default: None,
             accept_invalid_certs: Some(false),
             buffer_size: Some(1000),
             connect_timeout: Some(5),
@@ -116,18 +122,18 @@ impl UsagePlugin {
         let http_request = &req.supergraph_request;
         let headers = http_request.headers();
 
-        let get_header_value = |key: &str| {
+        let get_header_value = |key: &str, default_value: &Option<String>| {
             headers
                 .get(key)
                 .cloned()
-                .unwrap_or_else(|| HeaderValue::from_static(""))
+                .unwrap_or_else(|| HeaderValue::from_str(default_value.clone().unwrap_or(String::from("")).as_str()).unwrap())
                 .to_str()
                 .ok()
                 .map(|v| v.to_string())
         };
 
-        let client_name = get_header_value(&config.client_name_header);
-        let client_version = get_header_value(&config.client_version_header);
+        let client_name = get_header_value(&config.client_name_header, &config.client_name_header_default);
+        let client_version = get_header_value(&config.client_version_header, &config.client_version_header_default);
 
         let operation_name = req.supergraph_request.body().operation_name.clone();
         let operation_body = req
@@ -252,10 +258,12 @@ impl Plugin for UsagePlugin {
                     .client_name_header
                     .or(default_config.client_name_header)
                     .expect("client_name_header has no default value"),
+                client_name_header_default: user_config.client_name_header_default,
                 client_version_header: user_config
                     .client_version_header
                     .or(default_config.client_version_header)
                     .expect("client_version_header has no default value"),
+                client_version_header_default: user_config.client_version_header_default,
             },
             agent: match enabled {
                 true => Some(Arc::new(Mutex::new(UsageAgent::new(
